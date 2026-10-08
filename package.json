@@ -32,7 +32,8 @@
     }
   },
   "bin": {
-    "discovery-bank-email-parser": "./dist/cli.js"
+    "discovery-bank-email-parser": "./dist/cli.js",
+    "discovery-bank-gog": "./dist/gog-cli.js"
   },
   "files": [
     "dist",

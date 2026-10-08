@@ -35,6 +35,7 @@ describe('card payments', () => {
       amount: 388,
       description: 'Temu.com Dublin IE',
       fromAccountRaw: 'account ending ***1234',
+      cardEndingRaw: '***1234',
       balanceAfter: 98067.39,
       transactedAt: '2026-07-16T08:29:00.000+02:00',
     });
@@ -141,6 +142,21 @@ describe('other transaction types', () => {
       amount: 10000,
       description: 'SALARY',
       toAccountRaw: 'Transaction Account',
+    });
+  });
+
+  it('parses a real-time payment received as a credit', () => {
+    const tx = parseEmail(
+      'Real-time payment received R 456.78 To account ending ***1234 Reference: Example ' +
+      'Wednesday, 7 October at 10:51 Available balance: R 456.78'
+    );
+    expect(tx).toMatchObject({
+      type: 'incoming_payment',
+      direction: 'credit',
+      amount: 456.78,
+      description: 'Example',
+      toAccountRaw: 'account ending ***1234',
+      transactedAt: '2025-10-07T10:51:00.000+02:00',
     });
   });
 
@@ -335,6 +351,25 @@ describe('account names', () => {
       'Payment R 100.00 From account ending ***5678 Reference: X Monday, 6 July at 12:00',
     );
     expect(tx?.fromAccountRaw).toBe('account ending ***5678');
+  });
+
+  it('keeps a bank account suffix separate from the card suffix', () => {
+    const tx = parseEmail(
+      'Card payment Example Store ZA – R 25.00 From ***1234 Card ending ***5678 ' +
+      'Monday, 6 July at 12:00 Available balance: R 900.00',
+    );
+    expect(tx).toMatchObject({
+      fromAccountRaw: 'account ending ***1234',
+      cardEndingRaw: '***5678',
+    });
+  });
+
+  it('recognises a masked destination account without the account ending label', () => {
+    const tx = parseEmail(
+      'Real-time payment received R 75.00 To ***2468 Reference: Example ' +
+      'Monday, 6 July at 12:00 Available balance: R 975.00',
+    );
+    expect(tx?.toAccountRaw).toBe('account ending ***2468');
   });
 
   it('exposes the built-in account names', () => {

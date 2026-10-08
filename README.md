@@ -76,6 +76,18 @@ cat old-email.txt   | npx discovery-bank-email-parser --received-at 2025-06-30T0
 
 Prints the parsed transaction as JSON (with `flow` added), or exits `1` if the email isn't a recognised transaction notification.
 
+### Read-only Gmail import with gog
+
+Pipe a complete read-only Gmail search into `discovery-bank-gog`:
+
+```sh
+gog --readonly --gmail-no-send --account user@example.com gmail messages search 'from:no-reply@discovery.bank after:2026/01/01 before:2026/02/01' --all --include-body --json --no-input | discovery-bank-gog
+```
+
+The command reads JSON from standard input and does not call Gmail, `gog`, or any external service itself. It validates the sender mailbox, original receipt timestamp, complete pagination, and required message fields; deduplicates by Gmail message ID; and reports parsed transactions plus rejected, ignored, and incomplete-coverage classifications.
+
+This is notification-only coverage. It does not log into the bank or provide a live balance. Authorization emails can later reverse, available credit is not cash, and statements are still required for fees, interest, and completeness. Repayments and transfers between your own accounts are not new spend. A foreign-currency card notification with `amount: 0` means the ZAR amount is not yet known, not that the purchase cost nothing.
+
 ## Cloudflare Email Workers
 
 The parser was built for a Cloudflare Email Worker, which is the cheapest way to get a real-time feed: point a route at your worker and forward Discovery's notifications to it.
@@ -120,6 +132,7 @@ Only process mail you trust. Balances and amounts come straight out of the email
 | `description` | `string?` | Merchant name, or the `Reference:` line |
 | `fromAccountRaw` | `string?` | e.g. `'Transaction Account'`, `'account ending ***1234'` |
 | `toAccountRaw` | `string?` | |
+| `cardEndingRaw` | `string?` | Masked card suffix, kept separate from the bank account reference. |
 | `balanceAfter` | `number?` | Available balance, when the email includes one |
 | `transactedAt` | `string` | ISO 8601, always `+02:00` (SAST) |
 

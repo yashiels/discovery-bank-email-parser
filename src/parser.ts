@@ -33,9 +33,9 @@ export interface ParsedTransaction {
   foreignCurrency?: string;
   exchangeRate?: number;
   description?: string;
-  /** Raw account text, e.g. `"Transaction Account"` or `"account ending ***1234"`. */
   fromAccountRaw?: string;
   toAccountRaw?: string;
+  cardEndingRaw?: string;
   balanceAfter?: number;
   /** ISO 8601, always with the `+02:00` (SAST) offset. */
   transactedAt: string;
@@ -192,7 +192,7 @@ export function parseEmail(
   // the model cares about, so it shares the 'payment' type rather than adding
   // one; checked early because "Pay" never matches the generic branch below.
   else if (/\bDiscovery\s+Pay\b/i.test(text))           type = 'payment';
-  else if (/\bIncoming\s+payment\b/i.test(text))        type = 'incoming_payment';
+  else if (/\b(?:Incoming\s+payment|Real-time\s+payment\s+received)\b/i.test(text)) type = 'incoming_payment';
   else if (/\bATM\s+withdrawal\b/i.test(text))          type = 'atm_withdrawal';
   else if (/\bDebit\s+order\b/i.test(text))             type = 'debit_order';
   else if (/\bForex\s+transfer\b/i.test(text))          type = 'forex_transfer';
@@ -217,10 +217,11 @@ export function parseEmail(
 
   // "Card ending ***1234" on card payments, "Card ending: ***1234" on refunds
   const cardMatch = text.match(/Card\s+ending:?\s+\*+(\d{4})/i);
+  const cardEndingRaw = cardMatch ? `***${cardMatch[1]}` : undefined;
 
   // Account references
-  const fromEndingMatch = text.match(/From\s+account\s+ending\s+(\*+\d{4})/i);
-  const toEndingMatch   = text.match(/To\s+account\s+ending\s+(\*+\d{4})/i);
+  const fromEndingMatch = text.match(/From\s+(?:account\s+ending\s+)?(\*+\d{4})/i);
+  const toEndingMatch   = text.match(/To\s+(?:account\s+ending\s+)?(\*+\d{4})/i);
   const fromNameMatch = accountNames ? text.match(new RegExp(`From\\s+(${accountNames})`, 'i')) : null;
   const toNameMatch   = accountNames ? text.match(new RegExp(`To\\s+(${accountNames})`, 'i')) : null;
 
@@ -253,18 +254,22 @@ export function parseEmail(
       const currency  = lineMatch[2].toUpperCase();
       const parsedAmt = parseAmount(lineMatch[3]);
 
-      // Card account: card ending takes priority, fall back to named account
-      const cardRaw = cardMatch
-        ? `account ending ***${cardMatch[1]}`
-        : (isReversal ? toAccountRaw : fromAccountRaw);
+      const explicitBankAccountRaw = isReversal
+        ? (toEndingMatch ? toAccountRaw : undefined)
+        : (fromEndingMatch ? fromAccountRaw : undefined);
+      const namedAccountRaw = isReversal ? toAccountRaw : fromAccountRaw;
+      const accountRaw = explicitBankAccountRaw
+        ?? (cardEndingRaw ? `account ending ${cardEndingRaw}` : undefined)
+        ?? namedAccountRaw;
 
       if (currency === 'R' || currency === 'ZAR') {
         return {
           type, direction,
           amount: parsedAmt,
           description: merchant,
-          fromAccountRaw: isReversal ? undefined : cardRaw,
-          toAccountRaw:   isReversal ? cardRaw   : undefined,
+          fromAccountRaw: isReversal ? undefined : accountRaw,
+          toAccountRaw:   isReversal ? accountRaw : undefined,
+          cardEndingRaw,
           balanceAfter,
           transactedAt,
         };
@@ -278,8 +283,9 @@ export function parseEmail(
         foreignAmount:    parsedAmt,
         foreignCurrency:  currency,
         description:      merchant,
-        fromAccountRaw: isReversal ? undefined : cardRaw,
-        toAccountRaw:   isReversal ? cardRaw   : undefined,
+        fromAccountRaw: isReversal ? undefined : accountRaw,
+        toAccountRaw:   isReversal ? accountRaw : undefined,
+        cardEndingRaw,
         balanceAfter,
         transactedAt,
       };
@@ -302,7 +308,7 @@ export function parseEmail(
     }
 
     case 'incoming_payment': {
-      const match = text.match(/\bIncoming\s+payment\s+(?:R|ZAR)\s*([\d,]+\.\d{2})/i);
+      const match = text.match(/\b(?:Incoming\s+payment|Real-time\s+payment\s+received)\s+(?:R|ZAR)\s*([\d,]+\.\d{2})/i);
       if (!match) return null;
       return {
         type, direction: 'credit', amount: parseAmount(match[1]),
